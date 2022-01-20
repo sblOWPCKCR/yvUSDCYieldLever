@@ -19,6 +19,18 @@ interface YieldCauldron {
     function balances(bytes12) external returns (uint128, uint128);
 }
 
+interface yVaultEx {
+  function deposit(uint amount) external returns (uint);
+  function withdraw() external returns (uint);
+
+  function withdrawalQueue(uint index) external returns (address);
+}
+
+interface yStrategy {
+    function keeper() external view returns (address);
+    function name() external view returns (string memory);
+    function harvest() external;
+}
 
 interface IUSDC {
     function balanceOf(address owner) external view returns (uint);
@@ -38,6 +50,7 @@ interface IUSDC {
 contract ContractTest is DSTest {
     IUSDC constant _usdc = IUSDC(0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48);
     VM constant _vm = VM(0x7109709ECfa91a80626fF3989D68f67F5b1DD12D);
+    yVaultEx constant yvUSDC = yVaultEx(0xa354F35829Ae975e850e23e9615b11Da1B3dC4DE);
 
     YieldLadle _ladle;
     YieldLever _lever;
@@ -70,8 +83,34 @@ contract ContractTest is DSTest {
         _lever.invest(baseAmount, borrowAmount, maxFyAmount, seriesId);
         (, uint112 fyTokens2,) = _pool.getCache();
         inkAmount = int128(uint128(fyTokens)) - int128(uint128(fyTokens2));
+    }
 
-        emit log_named_uint("base", _usdc.balanceOf(address(_lever)));
+    /**
+    @dev Attempts to harvest the yearn vault, so that it generates profit
+    In reality, profit in its strategies comes from external services (lending on
+    AAVE, Sushi, Balancer), so without simulating activity there the vault
+    has no profits and actually loses money
+     */
+    function yvHarvest() internal {
+        emit log_string("yvHarvest");
+        for (uint i = 0; i < 20; ++i) {
+            yStrategy strategy = yStrategy(yvUSDC.withdrawalQueue(i));
+            if (address(strategy) == address(0)) {
+                break;
+            }
+            emit log_named_string("\tstrategy", strategy.name());
+            _vm.prank(strategy.keeper());
+            (bool success, bytes memory returnData) = address(strategy).call(
+                abi.encodeWithSignature(
+                    "harvest()"
+                )
+            );
+            if (success) {
+                emit log_string("\tsuccess");
+            } else {
+                emit log_string("\tfailure");
+            }
+        }
     }
 
     function computeStats() internal {
@@ -84,6 +123,7 @@ contract ContractTest is DSTest {
     }
 
     function testImmediateWithdraw() public {
+        yvHarvest();
         _lever.unwind(vaultId, maxFyAmount, _ladle.pools(seriesId), inkAmount);
         computeStats();
     }
@@ -91,6 +131,7 @@ contract ContractTest is DSTest {
     function testWithdrawIn1Week() public {
         _vm.roll(block.number + 1);
         _vm.warp(block.timestamp + 3600 * 24 * 7);
+        yvHarvest();
         _lever.unwind(vaultId, maxFyAmount, _ladle.pools(seriesId), inkAmount);
         computeStats();
     }
@@ -98,6 +139,7 @@ contract ContractTest is DSTest {
     function testWithdrawIn2Months() public {
         _vm.roll(block.number + 1);
         _vm.warp(block.timestamp + 3600 * 24 * 30 * 2);
+        yvHarvest();
         _lever.unwind(vaultId, maxFyAmount, _ladle.pools(seriesId), inkAmount);
         computeStats();
     }
@@ -105,6 +147,7 @@ contract ContractTest is DSTest {
     function testWithdrawIn1Year() public {
         _vm.roll(block.number + 1);
         _vm.warp(block.timestamp + 3600 * 24 * 365);
+        yvHarvest();
         _lever.unwind(vaultId, maxFyAmount, _ladle.pools(seriesId), inkAmount);
         computeStats();
     }
