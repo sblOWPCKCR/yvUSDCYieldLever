@@ -3,6 +3,9 @@ pragma solidity 0.8.11;
 
 interface YieldLadle {
   function batch(bytes[] calldata calls) external payable returns(bytes[] memory results);
+
+  function pools(bytes6) external returns (address);
+  function cauldron() external returns (address);
 }
 
 interface IERC20 {
@@ -39,17 +42,19 @@ contract YieldLever {
   bytes6 constant ilkId = bytes6(0x303900000000); // for yvUSDC
   IToken constant iUSDC = IToken(0x32E4c68B3A4a813b710595AebA7f6B7604Ab9c15); 
   IERC20 constant USDC = IERC20(0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48);
-  YieldLadle constant Ladle = YieldLadle(0x6cB18fF2A33e981D1e38A663Ca056c0a5265066A);
+  YieldLadle public Ladle;
   address constant yvUSDCJoin = address(0x403ae7384E89b086Ea2935d5fAFed07465242B38);
 
   bytes4 private constant BUILD_SELECTOR = bytes4(keccak256("build(bytes6,bytes6,uint8)"));
   bytes4 private constant SERVE_SELECTOR = bytes4(keccak256("serve(bytes12,address,uint128,uint128,uint128)"));
   bytes4 private constant REPAY_SELECTOR = bytes4(keccak256("repayVault(bytes12,address,int128,uint128)"));
+  bytes4 private constant PULL_SELECTOR = bytes4(keccak256("pour(bytes12,address,int128,int128)"));
 
   address internal immutable dev;
 
-  constructor() {
+  constructor(YieldLadle ladle) {
     dev = msg.sender;
+    Ladle = ladle;
   }
 
   function invest(
